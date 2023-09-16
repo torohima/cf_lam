@@ -1,10 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
 using System.Text;
@@ -13,17 +10,12 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using CefSharp;
 using CefSharp.DevTools.Input;
-using CefSharp.DevTools.IO;
-using CefSharp.Enums;
 using CefSharp.Handler;
-using CefSharp.Structs;
 using CefSharp.WinForms;
-using cloudfare_bypass_cefsharp.Properties;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
-using Nito.AsyncEx;
 using Point = System.Drawing.Point;
 
 namespace cloudfare_bypass_cefsharp
@@ -41,6 +33,7 @@ namespace cloudfare_bypass_cefsharp
 		public string DefaultUserAngent { get; set; }
 
 
+		// This will setup default one time for all ChromiumWebBrowser
 		public async Task SetupCef(bool isheadless = false)
 		{
 			var settings = new CefSettings();
@@ -50,11 +43,13 @@ namespace cloudfare_bypass_cefsharp
 				settings.WindowlessRenderingEnabled = true;
 			}
 
-			//  settings.UserAgent = @"Mozilla/5.0 (Windows NT 10.0; WOW64; Trident/7.0; rv:11.0) like Gecko";
-			//@"Dalvik/1.6.0 (Linux; U; Android 5.1.1; Google Nexus 4 - 5.1.1 - API 16 - 768x1280 Build/JRO03S) [FBAN/FB4A;FBAV/50.0.0.10.54;FBPN/com.facebook.katana;FBLC/en_US;FBBV/16053538;FBCR/Android;FBMF/Genymotion;FBBD/generic;FBDV/Google Nexus 4 - 4.1.1 - API 16 - 768x1280;FBSV/4.1.1;FBCA/x86:armeabi-v7a;FBDM/{density=2.0,width=768,height=1184};FB_FW/1;]";
-			settings.UserAgent = DefaultUserAngent;
-			settings.AcceptLanguageList = "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7";
 
+			settings.UserAgent = DefaultUserAngent;
+			settings.AcceptLanguageList = "en-US;q=0.8,en;q=0.7";
+
+
+			// You can setting the cache path to allow cefsharp store cookies in folder,
+			// if not setting cefsharp will store cookies in memory, and lost when close application
 			var pathcef = Path.Combine(Application.StartupPath, "cefdata");
 			if (!Directory.Exists(pathcef))
 			{
@@ -67,7 +62,6 @@ namespace cloudfare_bypass_cefsharp
 			CefSharpSettings.FocusedNodeChangedEnabled = true;
 			CefSharpSettings.ShutdownOnExit = true;
 			settings.CefCommandLineArgs.Add("disable-web-security");
-			settings.CefCommandLineArgs.Add("disable-site-isolation-trials");
 			settings.CefCommandLineArgs.Add("disable-application-cache");
 
 
@@ -92,50 +86,17 @@ namespace cloudfare_bypass_cefsharp
 
 		ChromiumWebBrowser ChromiumWeb;
 
-		public async Task WaitLoadPageCompleted(string url)
-		{
-			AsyncAutoResetEvent tsc = new AsyncAutoResetEvent();
-
-			try
-			{
-				bool res = false;
-
-				EventHandler<LoadingStateChangedEventArgs> handler = null;
-
-				handler = (sender, args) =>
-				{
-					if (!args.IsLoading)
-					{
-						ChromiumWeb.LoadingStateChanged -= handler;
-
-						tsc.Set();
-					}
-				};
-				ChromiumWeb.LoadingStateChanged += handler;
-
-				ChromiumWeb.Load(url);
-
-
-				await tsc.WaitAsync();
-			}
-			catch (Exception e)
-			{
-				Console.WriteLine(e);
-				throw;
-			}
-		}
 
 		private async void button1_Click(object sender, EventArgs e)
 		{
+			// setting userangent for cef
+			// you can setting this for each ChromiumWebBrowser, this will override the default setting
 			var UserAngent =
 				"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.5304.122 Safari/537.36";
 
 
 			RequestContextSettings requestContextSettings = new RequestContextSettings
 			{
-				//PersistUserPreferences = false,
-				//PersistSessionCookies = false,
-				//CachePath = ""
 			};
 
 			IRequestContext requestContext = new RequestContext(requestContextSettings);
@@ -145,13 +106,6 @@ namespace cloudfare_bypass_cefsharp
 			panel1.Controls.Add(ChromiumWeb);
 			ChromiumWeb.ActivateBrowserOnCreation = true;
 			ChromiumWeb.RequestHandler = new RequestHandel(UserAngent);
-			//ChromiumWeb.BrowserSettings = new BrowserSettings
-			//{
-			//	Javascript = CefState.Enabled,
-			//	JavascriptAccessClipboard = CefState.Enabled,
-			//	WebGl = CefState.Disabled
-			//};
-			//   IsBlockPopup = true;
 
 			ChromiumWeb.RenderProcessMessageHandler = new RenderProcessMessageHandler();
 
@@ -161,12 +115,13 @@ namespace cloudfare_bypass_cefsharp
 
 			ChromiumWeb.ActivateBrowserOnCreation = true;
 
+			// wait for captcha frame display, you also can check the captcha frame is display by check the html source code  via javascript
+			// this just a example, you can use your own logic to check the captcha frame is display for fastter click, no need wait until 10 seconds
+			await Task.Delay(10000);
 
-			await Task.Delay(5000);
+			// you can use this code to show dev tool, easy for tartget element in browser
+			//ChromiumWeb.ShowDevTools();
 
-			///////////////////
-			///
-			/// 
 			var lisframe =
 				ChromiumWeb.GetBrowser().GetFrameNames();
 
@@ -180,96 +135,26 @@ namespace cloudfare_bypass_cefsharp
 				}
 			}
 
+			// Get the iframe's position relative to the browser
 			Point? p1 = await GetCordFrameInBroswer(f);
 
+			// Get the element's position relative to the ifame
+			////the  old code is image[class*="mark"]
 
+			//Point? p2 = await GetCordElInFrame(f,
+			//	"img[class*=\"mark\"]");
+
+			//// new code
 			Point? p2 = await GetCordElInFrame(f,
-				"img[class=\"mark\"]");
-
+				"span[class*=\"mark\"]");
 			Point newp = new Point(p1.Value.X + p2.Value.X, p2.Value.Y + p1.Value.Y);
 			var inprt = ChromiumWeb.GetBrowser().GetHost().GetWindowHandle();
 
-
-			Debug.WriteLine(JsonConvert.SerializeObject(newp));
-			SendClickOnPosition(inprt, newp.X, newp.Y);
-
+			// This click method through cpd chrome
 			await ClickAsync(newp.X, newp.Y,
 				new ClickOptions { Button = MouseButton.Left, ClickCount = 1, Delay = 200 });
-
-			// send mouse click by cdp cefsharp
-			await Task.Delay(1000000000);
 		}
 
-		// Token: 0x06000042 RID: 66
-		[DllImport("user32.dll")]
-		[return: MarshalAs(UnmanagedType.Bool)]
-		private static extern bool PostMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
-
-		// Token: 0x0600007C RID: 124 RVA: 0x0000AFD0 File Offset: 0x000091D0
-		public static IntPtr MakeLParamFromXY(int x, int y)
-		{
-			return (IntPtr)((y << 16) | x);
-		}
-
-		public const int  WM_KEYDOWN       = 0x100;
-		public const int  WM_KEYUP         = 0x101;
-		public const int  WM_COMMAND       = 0x111;
-		public const int  WM_LBUTTONDOWN   = 0x201;
-		public const int  WM_LBUTTONUP     = 0x202;
-		public const int  WM_LBUTTONDBLCLK = 0x203;
-		public const int  WM_RBUTTONDOWN   = 0x204;
-		public const int  WM_RBUTTONUP     = 0x205;
-		public const int  WM_RBUTTONDBLCLK = 0x206;
-		public const int  VK_CONTROL       = 0x11;
-		public const int  WM_MOUSEMOVE     = 0x0200;
-		const        int  VK_A             = 0x41;
-		public const uint WM_CHAR          = 0x0102;
-
-		public static void SendClickOnPosition(IntPtr controlHandle, int x, int y,
-											   EMouseKey mouseButton = EMouseKey.LEFT, int clickTimes = 1)
-		{
-			int msg = 0;
-			int msg2 = 0;
-			if (mouseButton == EMouseKey.LEFT)
-			{
-				msg = 0x0201;
-				msg2 = 0x0202;
-			}
-
-			if (mouseButton == EMouseKey.RIGHT)
-			{
-				msg = 516;
-				msg2 = 517;
-			}
-
-			IntPtr lParam = MakeLParamFromXY(x, y);
-			if (mouseButton == EMouseKey.LEFT || mouseButton == EMouseKey.RIGHT)
-			{
-				for (int i = 0; i < clickTimes; i++)
-				{
-					PostMessage(controlHandle, 0x0006, new IntPtr(1), lParam);
-					PostMessage(controlHandle, msg, new IntPtr(1), lParam);
-					PostMessage(controlHandle, msg2, new IntPtr(0), lParam);
-				}
-			}
-			else
-			{
-				if (mouseButton == EMouseKey.DOUBLE_LEFT)
-				{
-					msg = 515;
-					msg2 = 514;
-				}
-
-				if (mouseButton == EMouseKey.DOUBLE_RIGHT)
-				{
-					msg = 518;
-					msg2 = 517;
-				}
-
-				PostMessage(controlHandle, msg, new IntPtr(1), lParam);
-				PostMessage(controlHandle, msg2, new IntPtr(0), lParam);
-			}
-		}
 
 		private bool IsLoading = false;
 
@@ -298,7 +183,7 @@ namespace cloudfare_bypass_cefsharp
 
 			var script = @"(function () {
 			    var bnt = document.querySelector('" + attr + @"');
-			    bnt.focus();
+			   
 			    var bntRect = bnt.getBoundingClientRect();
 			    return JSON.stringify({ x: bntRect.left, y: bntRect.top });
 			})();";
@@ -535,10 +420,15 @@ namespace cloudfare_bypass_cefsharp
 			else
 			{
 				await Task.WhenAll(
-					//	MoveAsync(x, y),
 					DownAsync(options),
 					UpAsync());
 			}
+		}
+
+		private async void Form1_Load(object sender, EventArgs e)
+		{
+			// Loading cef set up
+			await SetupCef();
 		}
 	}
 
@@ -617,11 +507,5 @@ namespace cloudfare_bypass_cefsharp
 		public int Modifiers { get; set; } = 0;
 
 		public int ClickCount { get; set; }
-
-		public decimal DeltaX { get; set; }
-
-		public decimal DeltaY { get; set; }
-
-		public string PointerType { get; set; } = "mouse";
 	}
 }
